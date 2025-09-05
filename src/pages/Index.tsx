@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Icon from '@/components/ui/icon';
 
 interface Player {
@@ -19,8 +20,14 @@ interface Player {
   hasPartner: boolean;
   currentTask: string;
   hcCoins: number;
+  rubles: number;
   hasPremium: boolean;
   premiumExpiry: number;
+  upgrades: {
+    educationBoost: boolean;
+    hcBonus: boolean;
+    aiHelper: boolean;
+  };
 }
 
 interface Question {
@@ -30,7 +37,7 @@ interface Question {
 }
 
 const Index = () => {
-  const [gameState, setGameState] = useState<'menu' | 'playing' | 'career' | 'life'>('menu');
+  const [gameState, setGameState] = useState<'menu' | 'playing' | 'career' | 'life' | 'shop'>('menu');
   const [player, setPlayer] = useState<Player>({
     name: 'Ты',
     age: 7,
@@ -44,8 +51,14 @@ const Index = () => {
     hasPartner: false,
     currentTask: 'Пройти 1 класс',
     hcCoins: 0,
+    rubles: 1000,
     hasPremium: false,
-    premiumExpiry: 0
+    premiumExpiry: 0,
+    upgrades: {
+      educationBoost: false,
+      hcBonus: false,
+      aiHelper: false
+    }
   });
 
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
@@ -53,6 +66,7 @@ const Index = () => {
   const [showResult, setShowResult] = useState(false);
   const [lastAnswerCorrect, setLastAnswerCorrect] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [showAiHint, setShowAiHint] = useState(false);
 
   // Система сохранения
   const saveGame = (playerData: Player) => {
@@ -73,6 +87,9 @@ const Index = () => {
           data.hasPremium = false;
           data.premiumExpiry = 0;
         }
+        // Добавление новых полей если их нет
+        if (!data.rubles) data.rubles = 1000;
+        if (!data.upgrades) data.upgrades = { educationBoost: false, hcBonus: false, aiHelper: false };
         return data;
       }
     } catch (error) {
@@ -170,12 +187,32 @@ const Index = () => {
     setGameState('playing');
     setQuestionsCompleted(0);
     setCurrentQuestion(generateQuestion(player.grade, player.hasPremium));
+    setShowAiHint(false);
+  };
+
+  const exitGame = () => {
+    setGameState('menu');
+    setCurrentQuestion(null);
+    setQuestionsCompleted(0);
+    setShowResult(false);
+    setShowAiHint(false);
+  };
+
+  const useAiHelper = () => {
+    if (player.upgrades.aiHelper && player.education >= 20) {
+      setShowAiHint(true);
+      setPlayer(prev => ({
+        ...prev,
+        education: prev.education - 20
+      }));
+    }
   };
 
   const answerQuestion = (selectedAnswer: number) => {
     const correct = selectedAnswer === currentQuestion?.answer;
     setLastAnswerCorrect(correct);
     setShowResult(true);
+    setShowAiHint(false);
 
     setTimeout(() => {
       setShowResult(false);
@@ -183,9 +220,10 @@ const Index = () => {
       setQuestionsCompleted(newCompleted);
 
       if (correct) {
+        const educationGain = player.upgrades.educationBoost ? 15 : 10;
         setPlayer(prev => ({
           ...prev,
-          education: prev.education + 10,
+          education: prev.education + educationGain,
           happiness: Math.min(prev.happiness + 5, 100)
         }));
       } else {
@@ -207,7 +245,9 @@ const Index = () => {
   const completeGrade = () => {
     const newGrade = player.grade + 1;
     const newAge = player.age + 1;
-    const hcReward = 100;
+    const baseHcReward = 100;
+    const hcReward = player.upgrades.hcBonus ? Math.floor(baseHcReward * 1.1) : baseHcReward;
+    const rubleReward = player.grade * 50;
 
     if (newGrade === 10) {
       setPlayer(prev => ({
@@ -215,13 +255,15 @@ const Index = () => {
         grade: newGrade,
         age: newAge,
         education: prev.education + 50,
-        hcCoins: prev.hcCoins + hcReward
+        hcCoins: prev.hcCoins + hcReward,
+        rubles: prev.rubles + rubleReward
       }));
       setGameState('career');
     } else if (newGrade > 11) {
       setPlayer(prev => ({
         ...prev,
-        hcCoins: prev.hcCoins + hcReward
+        hcCoins: prev.hcCoins + hcReward,
+        rubles: prev.rubles + rubleReward
       }));
       setGameState('life');
     } else {
@@ -231,6 +273,7 @@ const Index = () => {
         age: newAge,
         education: prev.education + 50,
         hcCoins: prev.hcCoins + hcReward,
+        rubles: prev.rubles + rubleReward,
         currentTask: `Пройти ${newGrade} класс`
       }));
       setQuestionsCompleted(0);
@@ -248,6 +291,21 @@ const Index = () => {
         premiumExpiry: expiryDate
       }));
       setShowPremiumModal(false);
+    }
+  };
+
+  const buyUpgrade = (upgradeType: string, cost: number, currency: 'hc' | 'rubles') => {
+    const canAfford = currency === 'hc' ? player.hcCoins >= cost : player.rubles >= cost;
+    
+    if (canAfford) {
+      setPlayer(prev => ({
+        ...prev,
+        [currency === 'hc' ? 'hcCoins' : 'rubles']: currency === 'hc' ? prev.hcCoins - cost : prev.rubles - cost,
+        upgrades: {
+          ...prev.upgrades,
+          [upgradeType]: true
+        }
+      }));
     }
   };
 
@@ -309,9 +367,11 @@ const Index = () => {
       hasHouse: false,
       hasPartner: false,
       currentTask: 'Пройти 1 класс',
-      hcCoins: player.hcCoins, // Сохраняем HC
+      hcCoins: player.hcCoins,
+      rubles: player.rubles,
       hasPremium: player.hasPremium,
-      premiumExpiry: player.premiumExpiry
+      premiumExpiry: player.premiumExpiry,
+      upgrades: player.upgrades
     };
     setPlayer(newPlayer);
     setGameState('menu');
@@ -333,14 +393,24 @@ const Index = () => {
               <p className="text-gray-600">Прожи свою жизнь с самого начала!</p>
             </div>
 
-            {/* HC Валюта */}
-            <Card className="p-4 bg-gradient-to-r from-yellow-400 to-orange-400 text-white">
-              <div className="flex items-center justify-center gap-2">
-                <Icon name="Coins" size={24} />
-                <span className="text-2xl font-bold">{player.hcCoins} HC</span>
-              </div>
-              <div className="text-xs opacity-90 mt-1">HimoCoin валюта</div>
-            </Card>
+            {/* Валюты */}
+            <div className="grid grid-cols-2 gap-3">
+              <Card className="p-4 bg-gradient-to-r from-yellow-400 to-orange-400 text-white">
+                <div className="flex items-center justify-center gap-2">
+                  <Icon name="Coins" size={20} />
+                  <span className="text-xl font-bold">{player.hcCoins} HC</span>
+                </div>
+                <div className="text-xs opacity-90 mt-1">HimoCoin</div>
+              </Card>
+              
+              <Card className="p-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white">
+                <div className="flex items-center justify-center gap-2">
+                  <Icon name="Banknote" size={20} />
+                  <span className="text-xl font-bold">{player.rubles.toLocaleString()} ₽</span>
+                </div>
+                <div className="text-xs opacity-90 mt-1">Рубли</div>
+              </Card>
+            </div>
 
             {/* Премиум статус */}
             {player.hasPremium ? (
@@ -429,10 +499,10 @@ const Index = () => {
                 </div>
                 
                 <div className="flex items-center gap-3">
-                  <Icon name="Briefcase" size={24} className="text-warning" />
+                  <Icon name="ShoppingBag" size={24} className="text-green-600" />
                   <div className="text-left">
-                    <div className="font-semibold">Карьера</div>
-                    <div className="text-sm text-gray-600">Выбери свой путь после школы</div>
+                    <div className="font-semibold">Магазин</div>
+                    <div className="text-sm text-gray-600">Покупай улучшения за валюту</div>
                   </div>
                 </div>
                 
@@ -450,6 +520,11 @@ const Index = () => {
               <Button onClick={startGame} size="lg" className="w-full text-lg py-6">
                 <Icon name="Play" size={20} className="mr-2" />
                 {player.grade > 1 ? 'Продолжить' : 'Начать Игру'}
+              </Button>
+              
+              <Button onClick={() => setGameState('shop')} variant="outline" className="w-full">
+                <Icon name="ShoppingBag" size={16} className="mr-2" />
+                Магазин улучшений
               </Button>
               
               {player.grade > 1 && (
@@ -476,14 +551,25 @@ const Index = () => {
                     </Badge>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <Icon name="Coins" size={16} className="text-yellow-500" />
-                  <span className="font-semibold">{player.hcCoins} HC</span>
-                </div>
+                <Button onClick={exitGame} variant="outline" size="sm">
+                  <Icon name="X" size={16} />
+                </Button>
               </div>
 
-              <div className="text-right text-sm mb-4">
-                Вопрос {questionsCompleted + 1}/{getQuestionsForGrade(player.grade, player.hasPremium)}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-1">
+                    <Icon name="Coins" size={16} className="text-yellow-500" />
+                    <span className="font-semibold">{player.hcCoins}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Icon name="Banknote" size={16} className="text-green-500" />
+                    <span className="font-semibold">{player.rubles.toLocaleString()}</span>
+                  </div>
+                </div>
+                <div className="text-right text-sm">
+                  Вопрос {questionsCompleted + 1}/{getQuestionsForGrade(player.grade, player.hasPremium)}
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2 mb-4">
@@ -514,22 +600,40 @@ const Index = () => {
               <Card className="p-6 bg-white/90 backdrop-blur">
                 <CardHeader className="p-0 mb-4">
                   <CardTitle className="text-center text-xl">{currentQuestion.question}</CardTitle>
-                  {player.hasPremium && (
-                    <div className="text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    {player.hasPremium && (
                       <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700">
                         Упрощённый режим
                       </Badge>
-                    </div>
-                  )}
+                    )}
+                    {player.upgrades.aiHelper && player.education >= 20 && !showAiHint && (
+                      <Button onClick={useAiHelper} variant="outline" size="sm" className="text-xs">
+                        <Icon name="Bot" size={14} className="mr-1" />
+                        ИИ-подсказка (-20 знаний)
+                      </Button>
+                    )}
+                  </div>
                 </CardHeader>
+                
+                {showAiHint && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-blue-800">
+                      <Icon name="Bot" size={16} />
+                      <span className="text-sm font-medium">ИИ-помощник:</span>
+                    </div>
+                    <div className="text-sm text-blue-700 mt-1">
+                      Правильный ответ: <span className="font-bold">{currentQuestion.answer}</span>
+                    </div>
+                  </div>
+                )}
                 <CardContent className="p-0">
                   <div className="grid grid-cols-2 gap-3">
                     {currentQuestion.options.map((option, index) => (
                       <Button
                         key={index}
-                        variant="outline"
+                        variant={showAiHint && option === currentQuestion.answer ? "default" : "outline"}
                         onClick={() => answerQuestion(option)}
-                        className="h-14 text-lg"
+                        className={`h-14 text-lg ${showAiHint && option === currentQuestion.answer ? 'bg-blue-500 text-white' : ''}`}
                       >
                         {option}
                       </Button>
@@ -556,9 +660,12 @@ const Index = () => {
                 </p>
                 {questionsCompleted + 1 === getQuestionsForGrade(player.grade, player.hasPremium) && (
                   <div className="mt-3 p-2 bg-yellow-100 rounded-lg">
-                    <div className="flex items-center justify-center gap-2 text-yellow-800">
+                    <div className="flex items-center justify-center gap-2 text-yellow-800 mb-1">
                       <Icon name="Award" size={16} />
-                      <span className="text-sm font-semibold">+100 HC за класс!</span>
+                      <span className="text-sm font-semibold">Класс пройден!</span>
+                    </div>
+                    <div className="text-xs text-yellow-700">
+                      +{player.upgrades.hcBonus ? 110 : 100} HC, +{player.grade * 50}₽
                     </div>
                   </div>
                 )}
@@ -578,9 +685,15 @@ const Index = () => {
               </CardHeader>
               <div className="flex items-center justify-between">
                 <Badge variant="secondary">9 класс окончен</Badge>
-                <div className="flex items-center gap-2">
-                  <Icon name="Coins" size={16} className="text-yellow-500" />
-                  <span className="font-semibold">{player.hcCoins} HC</span>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
+                    <Icon name="Coins" size={16} className="text-yellow-500" />
+                    <span className="font-semibold">{player.hcCoins}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Icon name="Banknote" size={16} className="text-green-500" />
+                    <span className="font-semibold">{player.rubles.toLocaleString()}</span>
+                  </div>
                 </div>
               </div>
             </Card>
@@ -624,6 +737,119 @@ const Index = () => {
           </div>
         )}
 
+        {gameState === 'shop' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold">Магазин</h2>
+              <Button onClick={() => setGameState('menu')} variant="outline" size="sm">
+                <Icon name="ArrowLeft" size={16} className="mr-1" />
+                Назад
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <Card className="p-3 bg-yellow-50">
+                <div className="flex items-center gap-2">
+                  <Icon name="Coins" size={16} />
+                  <span className="font-semibold">{player.hcCoins} HC</span>
+                </div>
+              </Card>
+              <Card className="p-3 bg-green-50">
+                <div className="flex items-center gap-2">
+                  <Icon name="Banknote" size={16} />
+                  <span className="font-semibold">{player.rubles.toLocaleString()} ₽</span>
+                </div>
+              </Card>
+            </div>
+
+            <div className="space-y-3">
+              <Card className={`p-4 ${player.upgrades.educationBoost ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Icon name="TrendingUp" size={24} className="text-blue-600" />
+                    <div>
+                      <div className="font-semibold">Ускорение образования</div>
+                      <div className="text-sm text-gray-600">+50% знаний за правильный ответ</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    {player.upgrades.educationBoost ? (
+                      <Badge className="bg-green-500">Куплено</Badge>
+                    ) : (
+                      <div>
+                        <div className="text-sm text-gray-500">200 HC</div>
+                        <Button
+                          onClick={() => buyUpgrade('educationBoost', 200, 'hc')}
+                          disabled={player.hcCoins < 200}
+                          size="sm"
+                        >
+                          Купить
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+
+              <Card className={`p-4 ${player.upgrades.hcBonus ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Icon name="Plus" size={24} className="text-yellow-600" />
+                    <div>
+                      <div className="font-semibold">Дополнительные HC</div>
+                      <div className="text-sm text-gray-600">+10% HC за прохождение класса</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    {player.upgrades.hcBonus ? (
+                      <Badge className="bg-green-500">Куплено</Badge>
+                    ) : (
+                      <div>
+                        <div className="text-sm text-gray-500">300 HC</div>
+                        <Button
+                          onClick={() => buyUpgrade('hcBonus', 300, 'hc')}
+                          disabled={player.hcCoins < 300}
+                          size="sm"
+                        >
+                          Купить
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+
+              <Card className={`p-4 ${player.upgrades.aiHelper ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Icon name="Bot" size={24} className="text-purple-600" />
+                    <div>
+                      <div className="font-semibold">ИИ-помощник</div>
+                      <div className="text-sm text-gray-600">Подсказывает ответы (-20 знаний)</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    {player.upgrades.aiHelper ? (
+                      <Badge className="bg-green-500">Куплено</Badge>
+                    ) : (
+                      <div>
+                        <div className="text-sm text-gray-500">5,000 ₽</div>
+                        <Button
+                          onClick={() => buyUpgrade('aiHelper', 5000, 'rubles')}
+                          disabled={player.rubles < 5000}
+                          size="sm"
+                        >
+                          Купить
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
+        )}
+
         {gameState === 'life' && (
           <div className="space-y-4">
             <Card className="p-4 bg-white/90 backdrop-blur">
@@ -648,8 +874,8 @@ const Index = () => {
                 </div>
                 <div className="text-center">
                   <Icon name="Coins" size={20} className="mx-auto text-yellow-600" />
-                  <div className="text-sm">HC</div>
-                  <div className="font-semibold">{player.hcCoins}</div>
+                  <div className="text-sm">HC + ₽</div>
+                  <div className="font-semibold">{player.hcCoins} + {player.rubles.toLocaleString()}</div>
                 </div>
               </div>
             </Card>
@@ -712,13 +938,24 @@ const Index = () => {
               )}
             </div>
 
-            <Button 
-              onClick={resetGame}
-              variant="outline" 
-              className="w-full"
-            >
-              Начать новую жизнь
-            </Button>
+            <div className="space-y-2">
+              <Button 
+                onClick={() => setGameState('shop')}
+                variant="outline" 
+                className="w-full"
+              >
+                <Icon name="ShoppingBag" size={16} className="mr-2" />
+                Посетить магазин
+              </Button>
+              
+              <Button 
+                onClick={resetGame}
+                variant="outline" 
+                className="w-full"
+              >
+                Начать новую жизнь
+              </Button>
+            </div>
           </div>
         )}
       </div>
