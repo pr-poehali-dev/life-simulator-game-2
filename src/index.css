@@ -97,5 +97,39 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family:
+      "Open Sans",
+      -apple-system,
+      BlinkMacSystemFont,
+      system-ui,
+      sans-serif;
+  }
+
+  .text-success {
+    color: #4caf50;
+  }
+  .text-warning {
+    color: #ff9800;
+  }
+  .text-achievement {
+    color: #9c27b0;
+  }
+  .border-success {
+    border-color: #4caf50;
+  }
+  .border-warning {
+    border-color: #ff9800;
+  }
+  .border-achievement {
+    border-color: #9c27b0;
+  }
+  .bg-success {
+    background-color: #4caf50;
+  }
+  .bg-warning {
+    background-color: #ff9800;
+  }
+  .bg-achievement {
+    background-color: #9c27b0;
   }
 }
